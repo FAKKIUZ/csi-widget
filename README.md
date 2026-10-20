@@ -109,10 +109,10 @@ In alternativa, per un solo widget, nel Parameter si possono scrivere anche il l
 - Il risultato della tua squadra si legge così: bollino **V** (vittoria, verde), **N** (pareggio, grigio,
   solo calcio) o **P** (sconfitta, rossa), poi il punteggio sempre in ordine casa-ospite con il
   **vostro numero in grassetto e colorato**. `@` vuol dire che avete giocato fuori casa, `vs` in casa.
-- La giornata mostrata segue **la tua squadra**: è quella della vostra ultima partita e passa a quella della
-  vostra prossima dalla mattina del giorno in cui quella giornata comincia, anche se la prima partita è di altre squadre (vale per
-  pallavolo e calcio). Un recupero di una giornata vecchia invece compare dal giorno della partita. Le partite con data ancora da fissare
-  compaiono come **da definire**.
+- La giornata mostrata nei risultati e nella panoramica è **la stessa che apre il sito del CSI** (la sceglie
+  il CSI). Solo se il sito non la indica si segue la tua squadra: la giornata della vostra ultima partita,
+  che passa alla prossima dalla mattina del giorno in cui quella giornata comincia.
+  Le partite con data ancora da fissare compaiono come **da definire**.
 - Calcio: in classifica grande le colonne sono PT · G · V · N · P · DR (differenza reti); nei widget
   piccoli e medi i nomi molto lunghi perdono le sigle iniziali (es. "Pol.Com.Tavernola" → "Tavernola").
 - Se il sito CSI non risponde, il widget mostra i dati salvati e in fondo compare in rosso
