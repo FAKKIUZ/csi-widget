@@ -31,6 +31,11 @@ let TEAM = (params.squadra || CONFIG.squadra || "").trim()
 // sport riconosciuto dal link del girone (…/Calcio-a-11/…, …/Calcio-a-5/…, …/Pallavolo/…)
 const CALCIO = /\/calcio/i.test(URL_GIRONE)
 const ICON = CALCIO ? "⚽️" : "🏐"
+// Nei widget iOS concede allo script solo una trentina di secondi ("Received timeout when running script"):
+// attese di rete più corte e, se il sito è lento, i passaggi facoltativi si saltano usando i dati salvati
+const T0 = Date.now()
+const IN_WIDGET = !!(config.runsInWidget || config.runsInAccessoryWidget)
+function elapsed() { return (Date.now() - T0) / 1000 }
 
 const C = {
   // sfondo con una tinta appena accennata per sport: caldo per la pallavolo, verde per il calcio
@@ -119,7 +124,7 @@ if ((config.runsInWidget || config.runsInAccessoryWidget) && params.vista === "d
 } else if (config.runsInWidget || config.runsInAccessoryWidget) {
   const view = params.vista || CONFIG.vista
   Script.setWidget(err ? errorWidget(err) : await buildWidget(data, config.widgetFamily || "medium", view))
-  if (data && !data.fromCache && CONFIG.calendarioAuto) { try { await syncCalendar(data, true) } catch (e) { console.log(`Calendario: ${e}`) } }
+  if (data && !data.fromCache && CONFIG.calendarioAuto && elapsed() < 18) { try { await syncCalendar(data, true) } catch (e) { console.log(`Calendario: ${e}`) } }
 } else if (config.runsInApp) {
   const code = (args.queryParameters || {}).partita
   const match = data && code ? data.matches.find(m => m.code === code) : null
@@ -182,9 +187,9 @@ function updateHistory(d, fromCache) {
   d.prevPos = i > 0 ? h.states[i - 1].pos : null
 }
 
-async function fetchHTML(url) {
+async function fetchHTML(url, timeout) {
   const r = new Request(url)
-  r.timeoutInterval = 20
+  r.timeoutInterval = timeout || (IN_WIDGET ? 12 : 20)
   r.headers = {
     "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
     "Accept-Language": "it-IT,it;q=0.9",
@@ -420,7 +425,9 @@ async function loadLogos(d) {
       const p = fm.joinPath(fm.cacheDirectory(), `csi-logo64-${hash(url)}.png`)
       try {
         if (fm.fileExists(p)) { out[n] = fm.readImage(p); return }
-        const r = new Request(url); r.timeoutInterval = 10
+        // logo non ancora salvato: nel widget si scarica solo se c'è tempo (altrimenti le iniziali, ci riprova dopo)
+        if (IN_WIDGET && elapsed() > 14) throw new Error("tempo")
+        const r = new Request(url); r.timeoutInterval = IN_WIDGET ? 5 : 10
         const img = badge(await r.loadImage())
         fm.writeImage(p, img)
         out[n] = img
@@ -1618,7 +1625,11 @@ async function getMatchInfo(m) {
   const fm = FileManager.local()
   const p = fm.joinPath(fm.cacheDirectory(), `csi-gara-${m.code}.json`)
   try {
-    const info = parseMatchPage(await fetchHTML(m.href), m)
+    // nel widget: pagina della partita riletta al massimo ogni 3 ore, e mai se il tempo sta per finire
+    if (IN_WIDGET && fm.fileExists(p) && (Date.now() - fm.modificationDate(p).getTime() < 3 * 3600e3 || elapsed() > 14))
+      return JSON.parse(fm.readString(p))
+    if (IN_WIDGET && elapsed() > 14) throw new Error("tempo")
+    const info = parseMatchPage(await fetchHTML(m.href, IN_WIDGET ? 7 : 20), m)
     fm.writeString(p, JSON.stringify(info))
     return info
   } catch (e) {
