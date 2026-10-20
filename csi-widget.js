@@ -210,12 +210,27 @@ function parsePage(html) {
   return {
     title: parseTitle(html),
     ko,
+    siteRound: parseSiteRound(html),
     standings: ko ? [] : standings,
     matches,
     logos: parseLogos(html, names),
     info: parseTeamsInfo(html, names),
     fetched: Date.now(),
   }
+}
+
+// Giornata che il sito apre: il server del CSI la scrive nella pagina ("gststart = 1" = la seconda dell'elenco)
+function parseSiteRound(html) {
+  const n = html.match(/gststart\s*=\s*(\d+)/)
+  if (!n) return ""
+  const labels = []
+  const lre = /<div class="label-giornata[^"]*">\s*<label>([^<]*)<\/label>/gi
+  let m
+  while ((m = lre.exec(html))) {
+    const t = decode(m[1]).replace(/\s+/g, " ").trim(), g = t.match(/^(Andata|Ritorno)\s+giornata\s+(\d+)$/i)
+    labels.push(g ? `${g[1][0].toUpperCase()}${g[1].slice(1).toLowerCase()} ${g[2]}` : t)
+  }
+  return labels[+n[1]] || ""
 }
 
 function parseTitle(html) {
@@ -2445,6 +2460,12 @@ function currentGiornata(d) {
   if (!g.length) return {}
   const endToday = new Date(); endToday.setHours(23, 59, 59, 999)
   const startToday = new Date(); startToday.setHours(0, 0, 0, 0)
+  // prima di tutto la giornata che apre il sito del CSI: widget e sito mostrano sempre la stessa
+  const site = d.siteRound ? g.find(x => x.label === d.siteRound) : null
+  if (site) {
+    const open = g.filter(x => x !== site && x.matches.some(m => !m.sets && !m.tbd && m.ts >= startToday.getTime()))
+    return { cur: site, next: open.find(x => x.first >= site.first) || open[0] }
+  }
   const mine = TEAM ? d.matches.filter(m => isMyMatch(m) && !m.tbd).sort((a, b) => a.ts - b.ts) : []
   // coppe: una squadra eliminata non ha più turni suoi, si segue il tabellone come senza squadra
   const out = d.ko && (koStatus(d) || {}).state === "out"
