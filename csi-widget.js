@@ -242,6 +242,11 @@ function parseSiteRound(html) {
 function parseTitle(html) {
   const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
   let t = m ? strip(m[1]) : ""
+  // titolo nuovo del sito (nov. 2026): "Libere Girone D - Pallavolo | Risultati CSI Bergamo" → "Libere · Girone D"
+  if (/\|/.test(t)) {
+    t = t.split("|")[0].replace(/\s+-\s+(Pallavolo|Calcio[^-]*|Calcetto[^-]*)\s*$/i, "").trim()
+    return t.replace(/\s+Girone\s+/i, " · Girone ") || "Girone CSI"
+  }
   t = t.replace(/^.*\bCSI\s+\S+\s+/i, "").replace(/^Pvo\s+/i, "").trim()
   // calcio: "Cal Dilettanti A 11 Gruppo B C" → "Dilettanti B C" (poi "· Girone C")
   if (CALCIO) t = t.replace(/^Cal\s+/i, "").replace(/\bA\s+\d+\s+/i, "").replace(/\bGruppo\s+/i, "").trim()
@@ -2026,7 +2031,7 @@ function dashboard(w, d) {
   const t = teamData(d)
   const g = currentGiornata(d)
   const wide = Device.isPad()
-  header(w, d, "Panoramica")
+  header(w, d, "Panoramica", false, true) // come gli altri grandi: "Panoramica" sopra, il girone sotto
   w.addSpacer(8)
 
   const teamBlock = (stack, width) => {
@@ -2431,7 +2436,8 @@ async function appMenu(d, e) {
     ["Panoramica · piccolo", "panoramica", "small"], ["Panoramica · medio", "panoramica", "medium"], ["Panoramica · grande", "panoramica", "large"],
     ["Ultima partita · piccolo", "ultima", "small"], ["Ultima partita · medio", "ultima", "medium"], ["Ultima partita · grande", "ultima", "large"],
   ]
-  if (Device.isPad()) opts.push(["Panoramica · tutta pagina", "", "extraLarge"])
+  // widget a tutto schermo (iPad, e iPhone con iOS 27)
+  opts.push(["Panoramica · tutto schermo", "", "extraLarge"])
   opts.forEach(o => a.addAction(o[0]))
   a.addAction("Aggiorna Calendario")
   a.addAction("Mostra tutti i dati")
@@ -2444,7 +2450,10 @@ async function appMenu(d, e) {
     const w = await buildWidget(d, fam, view)
     if (fam === "small") await w.presentSmall()
     else if (fam === "medium") await w.presentMedium()
-    else if (fam === "extraLarge") await w.presentExtraLarge()
+    else if (fam === "extraLarge") {
+      // anteprima a tutto schermo se questa versione di Scriptable la offre, altrimenti nel riquadro grande
+      try { await w.presentExtraLarge() } catch (e) { await w.presentLarge() }
+    }
     else await w.presentLarge()
   } else if (i === opts.length) await syncCalendar(d)
   else if (i === opts.length + 1) await showTable(d)
