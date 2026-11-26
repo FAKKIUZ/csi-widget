@@ -80,6 +80,12 @@ const LRG = (() => {
   const t = { "390x844": [352, 352], "414x896": [354, 371] }[`${sw}x${sh}`] || [WIDE, Math.round(WIDE * 1.05)]
   return { w: t[0] - PAD * 2, h: t[1] - 24 }
 })()
+// Widget a tutto schermo (iOS 27): 12 Pro 352×537, misurato sugli screenshot; per gli altri una stima
+const XL = (() => {
+  const sw = Math.round(Math.min(SCREEN.width, SCREEN.height)), sh = Math.round(Math.max(SCREEN.width, SCREEN.height))
+  const t = { "390x844": [352, 537] }[`${sw}x${sh}`] || [WIDE, Math.round(sh * 0.636)]
+  return { w: t[0] - PAD * 2, h: t[1] - 24 }
+})()
 // scala dei caratteri della panoramica: testi 10,5 · dettagli 10 · etichette 9 (sectionLabel)
 const F_TXT = 10.5, F_SUB = 10
 let LOGOS = {}
@@ -582,7 +588,7 @@ function standingsLarge(w, d) {
   }
 }
 
-function standingsTable(w, rows, size, vpad) {
+function standingsTable(w, rows, size, vpad, gap, logoSize) {
   // calcio: stesse 6 colonne del volley (con 8 i nomi non entrerebbero): N al posto dei set, DR = differenza reti
   const cols = CALCIO ? [["PT", "pt"], ["G", "pg"], ["V", "v"], ["N", "n"], ["P", "p"], ["DR", "dr"]]
     : [["PT", "pt"], ["G", "pg"], ["V", "v"], ["P", "p"], ["SV", "sv"], ["SP", "sp"]]
@@ -595,7 +601,7 @@ function standingsTable(w, rows, size, vpad) {
   h.addSpacer()
   for (const [l] of cols) cell(h, l, cw, Font.semiboldSystemFont(9), C.sub, "center")
   w.addSpacer(4)
-  const list = w.addStack(); list.layoutVertically(); list.spacing = 2
+  const list = w.addStack(); list.layoutVertically(); list.spacing = gap === undefined ? 2 : gap
   rows.forEach((s, i) => {
     const r = list.addStack(); r.centerAlignContent(); r.spacing = 4
     r.setPadding(vpad, 5, vpad, 5); r.cornerRadius = 7
@@ -603,7 +609,7 @@ function standingsTable(w, rows, size, vpad) {
     r.backgroundColor = mine ? C.hl : (i % 2 === 0 ? C.stripe : C.bg)
     posBadge(r, s.pos, size * 1.6, size)
     trend(r, s, size)
-    logo(r, s.name, size + 6)
+    logo(r, s.name, logoSize || size + 6)
     const n = txt(r, s.name, size, mine ? C.hlText : C.text, mine ? "bold" : "regular")
     n.minimumScaleFactor = 0.85
     r.addSpacer()
@@ -1077,7 +1083,7 @@ function formDots(stack, form, size) {
   return r
 }
 
-function teamCard(stack, d, t, logoSize, width, tight) {
+function teamCard(stack, d, t, logoSize, width, tight, noMini) {
   const c = stack.addStack(); c.layoutVertically(); c.spacing = 3
   if (width) c.size = new Size(width, 0)
   const top = c.addStack(); top.centerAlignContent(); top.spacing = 8
@@ -1101,7 +1107,7 @@ function teamCard(stack, d, t, logoSize, width, tight) {
   }
   if (t.me) txt(c, statLine(t.me), 10, C.sub).minimumScaleFactor = 0.85
   formDots(c, t.form, 11)
-  if (t.me && d.standings.length > 2) {
+  if (t.me && d.standings.length > 2 && !noMini) {
     c.addSpacer(4)
     miniTable(c, d, t.me, width, tight)
   }
@@ -2058,11 +2064,49 @@ function dashboard(w, d) {
     r.addSpacer(10)
     roundBlock(r, colW)
   } else {
-    teamBlock(w, INNER)
-    w.addSpacer(12)
-    roundBlock(w, INNER)
-    w.addSpacer(12)
-    standingsBlock(w)
+    // iPhone: tutto deve stare in XL.h punti, altrimenti iOS taglia sopra e sotto (titolo compreso).
+    // Misure stimate: intestazione ~36, squadra ~84, ogni riga partita ~23, ogni riga classifica ~(size+7)
+    let left = XL.h - 36 - (d.fromCache ? 14 : 0)
+    if (TEAM && (t.me || t.last || t.next)) {
+      const row = w.addStack(); row.topAlignContent(); row.spacing = 12
+      // senza la mini-classifica (c'è quella intera sotto)
+      teamCard(row, d, t, 34, Math.round(XL.w * 0.47), false, true)
+      const r = row.addStack(); r.layoutVertically(); r.spacing = 2
+      lastBlock(r, t, 11)
+      r.addSpacer(6)
+      nextBlock(r, d, t, 11)
+      w.addSpacer(10)
+      left -= 84 + 10
+    }
+    if (g.cur) {
+      const all = d.ko ? roundList(d, g.cur) : g.cur.matches
+      const ms = d.ko ? pickMatches(all, 6) : all.slice(0, 6)
+      sectionLabel(w, prettyGiornata(g.cur.label))
+      w.addSpacer(3)
+      const list = w.addStack(); list.layoutVertically(); list.spacing = 3
+      const lay = rowLayout(ms, XL.w, 11)
+      ms.forEach(m => matchRow(list, m, XL.w, 11, false, true, lay))
+      w.addSpacer(10)
+      left -= 16 + ms.length * 23 + 10
+    }
+    if (d.standings.length) {
+      // la classifica prende lo spazio che resta: righe più basse se le squadre sono tante,
+      // e se non entrano tutte si tiene la parte con la propria squadra
+      left -= 16 + 19
+      // riga = logo (14) + margini sopra/sotto + 1 di distacco
+      const size = 10.5, LOGO = 14
+      const vpad = Math.max(0, Math.min(3, (left / d.standings.length - LOGO - 1) / 2))
+      const n = Math.max(3, Math.floor(left / (LOGO + 1 + vpad * 2)))
+      let rows = d.standings
+      if (rows.length > n) {
+        const i = Math.max(0, rows.findIndex(x => isMine(x.name)))
+        const from = Math.max(0, Math.min(i - Math.floor(n / 2), rows.length - n))
+        rows = rows.slice(from, from + n)
+      }
+      sectionLabel(w, "Classifica")
+      w.addSpacer(3)
+      standingsTable(w, rows, size, vpad, 1, LOGO)
+    }
   }
   w.addSpacer()
 }
